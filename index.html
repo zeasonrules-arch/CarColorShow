@@ -1,0 +1,309 @@
+{\rtf1\ansi\ansicpg1252\cocoartf2867
+\cocoatextscaling0\cocoaplatform0{\fonttbl\f0\fnil\fcharset134 STSongti-SC-Bold;}
+{\colortbl;\red255\green255\blue255;\red0\green0\blue0;}
+{\*\expandedcolortbl;;\cssrgb\c0\c0\c0;}
+\paperw11900\paperh16840\margl1440\margr1440\vieww28600\viewh14540\viewkind0
+\deftab720
+\pard\pardeftab720\sa321\partightenfactor0
+
+\f0\b\fs48 \cf0 \expnd0\expndtw0\kerning0
+<!DOCTYPE html>\
+<html lang="zh-CN">\
+<head>\
+    <meta charset="UTF-8">\
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">\
+    <title>BYD Showroom Experience</title>\
+    <style>\
+        body \{ margin: 0; overflow: hidden; background-color: #050505; font-family: sans-serif; \}\
+        #canvas-container \{ width: 100vw; height: 100vh; display: block; \}\
+        \
+        /* UI \'c8\'dd\'c6\'f7 */\
+        #ui-container \{\
+            position: absolute; bottom: 40px; left: 50%; transform: translateX(-50%);\
+            display: flex; flex-direction: column; gap: 20px; align-items: center;\
+            z-index: 999; width: 90%; max-width: 400px;\
+        \}\
+\
+        /* \'c4\'a5\'c9\'b0\'b2\'a3\'c1\'a7\'bf\'d8\'d6\'c6\'c3\'e6\'b0\'e5 */\
+        #controls \{\
+            background: rgba(30, 30, 30, 0.6); backdrop-filter: blur(20px);\
+            padding: 24px 30px; border-radius: 24px; \
+            border: 1px solid rgba(255,255,255,0.1);\
+            display: flex; justify-content: space-between; align-items: center; \
+            width: 100%; box-shadow: 0 20px 40px rgba(0,0,0,0.6);\
+        \}\
+        \
+        .control-item \{ display: flex; flex-direction: column; gap: 8px; align-items: center; \}\
+        .label \{ font-size: 10px; opacity: 0.7; letter-spacing: 1.5px; font-weight: 700; color: #fff; text-transform: uppercase; \}\
+        \
+        /* \'d1\'d5\'c9\'ab\'d1\'a1\'d4\'f1\'c6\'f7\'d1\'f9\'ca\'bd\'d3\'c5\'bb\'af */\
+        .color-wrapper \{\
+            position: relative; width: 44px; height: 44px; border-radius: 50%;\
+            border: 2px solid rgba(255,255,255,0.8); overflow: hidden;\
+            transition: transform 0.2s; cursor: pointer;\
+        \}\
+        .color-wrapper:hover \{ transform: scale(1.1); \}\
+        input[type="color"] \{ \
+            position: absolute; top: -50%; left: -50%; width: 200%; height: 200%; \
+            padding: 0; margin: 0; border: none; cursor: pointer; \
+        \}\
+\
+        /* \'c1\'c1\'b6\'c8\'bb\'ac\'bf\'e9\'d1\'f9\'ca\'bd */\
+        input[type="range"] \{ \
+            -webkit-appearance: none; width: 140px; height: 4px; \
+            background: rgba(255,255,255,0.2); border-radius: 2px; outline: none; \
+        \}\
+        input[type="range"]::-webkit-slider-thumb \{\
+            -webkit-appearance: none; width: 20px; height: 20px; background: #fff; \
+            border-radius: 50%; cursor: grab; box-shadow: 0 2px 6px rgba(0,0,0,0.5);\
+        \}\
+\
+        #loader \{\
+            position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);\
+            color: #fff; font-size: 14px; letter-spacing: 3px; font-weight: 300;\
+            text-shadow: 0 0 10px rgba(255,255,255,0.5); pointer-events: none;\
+            display: flex; flex-direction: column; align-items: center; gap: 10px;\
+        \}\
+        .spinner \{\
+            width: 40px; height: 40px; border: 3px solid rgba(255,255,255,0.3);\
+            border-top-color: #fff; border-radius: 50%; animation: spin 1s linear infinite;\
+        \}\
+        @keyframes spin \{ to \{ transform: rotate(360deg); \} \}\
+    </style>\
+    <script type="importmap">\
+        \{\
+            "imports": \{\
+                "three": "https://unpkg.com/three@0.160.0/build/three.module.js",\
+                "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"\
+            \}\
+        \}\
+    </script>\
+</head>\
+<body>\
+    <div id="loader">\
+        <div class="spinner"></div>\
+        <span>LOADING MODEL...</span>\
+    </div>\
+    \
+    <div id="canvas-container"></div>\
+\
+    <div id="ui-container">\
+        <div id="controls">\
+            <div class="control-item">\
+                <span class="label">Color</span>\
+                <div class="color-wrapper">\
+                    <input type="color" id="color-picker" value="#335588"> \
+                </div>\
+            </div>\
+            <div class="control-item">\
+                <span class="label">Ambience</span>\
+                <input type="range" id="brightness-slider" min="0" max="3" step="0.05" value="1.2">\
+            </div>\
+        </div>\
+    </div>\
+\
+    <script type="module">\
+        import * as THREE from 'three';\
+        import \{ OrbitControls \} from 'three/addons/controls/OrbitControls.js';\
+        import \{ GLTFLoader \} from 'three/addons/loaders/GLTFLoader.js';\
+        import \{ RGBELoader \} from 'three/addons/loaders/RGBELoader.js';\
+\
+        let scene, camera, renderer, carModel;\
+        let lights = \{\}; \
+        let time = 0;\
+\
+        // \'bb\'f9\'b4\'a1\'b9\'e2\'d5\'d5\'c5\'e4\'d6\'c3\
+        const baseIntensity = \{\
+            ambient: 1.0,\
+            top: 5.0,\
+            rim: 8.0,\
+            bottom: 3.0 \
+        \};\
+\
+        // 1. \'b3\'b5\'c9\'ed\'b2\'c4\'d6\'ca (Liquid Metal)\
+        const bodyMaterial = new THREE.MeshPhysicalMaterial(\{\
+            color: document.getElementById('color-picker').value,\
+            metalness: 0.75, \
+            roughness: 0.15,      \
+            clearcoat: 1.0,\
+            clearcoatRoughness: 0.03, \
+            ior: 1.5,             \
+            envMapIntensity: 1.5,\
+            side: THREE.DoubleSide\
+        \});\
+\
+        // 2. \'b3\'b5\'b4\'b0\'b2\'c4\'d6\'ca (Black Glass) - \'b4\'bf\'ba\'da\'a3\'ac\'b8\'df\'b7\'b4\'c9\'e4\
+        const glassMaterial = new THREE.MeshPhysicalMaterial(\{\
+            color: 0x000000,      // \'b4\'bf\'ba\'da\
+            metalness: 0.9,       // \'bd\'d3\'bd\'fc\'bd\'f0\'ca\'f4\'b5\'c4\'b8\'df\'b7\'b4\'c9\'e4\
+            roughness: 0.0,       // \'be\'b5\'c3\'e6\'b9\'e2\'bb\'ac\
+            transmission: 0.0,    // \'b2\'bb\'cd\'b8\'c3\'f7\'a3\'a8\'d2\'fe\'cb\'bd\'b2\'a3\'c1\'a7\'a3\'a9\
+            clearcoat: 1.0,\
+            clearcoatRoughness: 0.0\
+        \});\
+\
+        // 3. \'c2\'d6\'cc\'a5/\'cf\'f0\'bd\'ba\'b2\'c4\'d6\'ca (Matte Black)\
+        const rubberMaterial = new THREE.MeshStandardMaterial(\{\
+            color: 0x111111,\
+            roughness: 0.8,\
+            metalness: 0.1\
+        \});\
+\
+        init();\
+\
+        function init() \{\
+            const container = document.getElementById('canvas-container');\
+            \
+            // \'b3\'f5\'ca\'bc\'bb\'af\'b3\'a1\'be\'b0\
+            scene = new THREE.Scene();\
+            scene.background = new THREE.Color(0x050505); \
+            scene.fog = new THREE.Fog(0x050505, 10, 60);\
+\
+            // \'cf\'e0\'bb\'fa\
+            camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 100);\
+            camera.position.set(5.5, 2.5, 6.5);\
+\
+            // \'e4\'d6\'c8\'be\'c6\'f7\
+            renderer = new THREE.WebGLRenderer(\{ antialias: true, alpha: true, powerPreference: "high-performance" \});\
+            renderer.setSize(window.innerWidth, window.innerHeight);\
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));\
+            renderer.toneMapping = THREE.ACESFilmicToneMapping;\
+            renderer.toneMappingExposure = 1.0;\
+            renderer.shadowMap.enabled = true;\
+            renderer.shadowMap.type = THREE.PCFSoftShadowMap;\
+            container.appendChild(renderer.domElement);\
+\
+            // \'bf\'d8\'d6\'c6\'c6\'f7\
+            const controls = new OrbitControls(camera, renderer.domElement);\
+            controls.enableDamping = true;\
+            controls.maxPolarAngle = Math.PI - 0.1; \
+            controls.minDistance = 3;\
+            controls.maxDistance = 12;\
+            controls.autoRotate = true; // \'d7\'d4\'b6\'af\'d0\'fd\'d7\'aa\'d5\'b9\'ca\'be\
+            controls.autoRotateSpeed = 1.0;\
+\
+            setupLights();\
+            \
+            // --- \'ba\'cb\'d0\'c4\'d0\'de\'b8\'c4\'a3\'ba\'d7\'d4\'b6\'af\'bc\'d3\'d4\'d8 'car.glb' ---\
+            // \'d7\'a2\'d2\'e2\'a3\'ba\'c7\'eb\'c8\'b7\'b1\'a3\'c4\'e3\'b5\'c4\'c4\'a3\'d0\'cd\'ce\'c4\'bc\'fe\'c3\'fb\'ce\'aa car.glb \'c7\'d2\'d3\'eb html \'d4\'da\'cd\'ac\'d2\'bb\'c4\'bf\'c2\'bc\'cf\'c2\
+            loadModel('car.glb');\
+\
+            setupUIListeners();\
+            window.addEventListener('resize', onResize);\
+            animate();\
+        \}\
+\
+        function setupLights() \{\
+            lights.ambient = new THREE.AmbientLight(0xffffff, baseIntensity.ambient);\
+            scene.add(lights.ambient);\
+\
+            lights.top = new THREE.DirectionalLight(0xffffff, baseIntensity.top);\
+            lights.top.position.set(2, 10, 2);\
+            lights.castShadow = true;\
+            lights.top.shadow.mapSize.set(2048, 2048);\
+            lights.top.shadow.bias = -0.0001;\
+            scene.add(lights.top);\
+\
+            lights.rim = new THREE.SpotLight(0xddeeff, baseIntensity.rim);\
+            lights.rim.position.set(-6, 3, -6);\
+            lights.rim.lookAt(0,0,0);\
+            scene.add(lights.rim);\
+            \
+            lights.bottom = new THREE.SpotLight(0xffaa66, baseIntensity.bottom);\
+            lights.bottom.position.set(6, -4, 6);\
+            lights.bottom.lookAt(0,0,0);\
+            scene.add(lights.bottom);\
+        \}\
+\
+        function loadModel(url) \{\
+            const loader = new GLTFLoader();\
+            const loaderUI = document.getElementById('loader');\
+\
+            loader.load(url, (gltf) => \{\
+                carModel = gltf.scene;\
+\
+                // --- \'d6\'c7\'c4\'dc\'b2\'c4\'d6\'ca\'b7\'d6\'c5\'e4\'c2\'df\'bc\'ad ---\
+                carModel.traverse((child) => \{\
+                    if (child.isMesh) \{\
+                        child.castShadow = true;\
+                        child.receiveShadow = true;\
+                        \
+                        // \'bb\'f1\'c8\'a1\'b2\'bf\'bc\'fe\'c3\'fb\'b3\'c6\'b2\'a2\'d7\'aa\'ce\'aa\'d0\'a1\'d0\'b4\'a3\'ac\'b7\'bd\'b1\'e3\'c5\'d0\'b6\'cf\
+                        const name = child.name.toLowerCase();\
+\
+                        // 1. \'c5\'d0\'b6\'cf\'ca\'c7\'b7\'f1\'ca\'c7\'b2\'a3\'c1\'a7/\'b3\'b5\'b4\'b0\
+                        if (name.includes('window') || name.includes('glass') || name.includes('windshield') || name.includes('screen')) \{\
+                            child.material = glassMaterial;\
+                        \} \
+                        // 2. \'c5\'d0\'b6\'cf\'ca\'c7\'b7\'f1\'ca\'c7\'c2\'d6\'cc\'a5\
+                        else if (name.includes('tire') || name.includes('wheel') || name.includes('rubber')) \{\
+                            child.material = rubberMaterial;\
+                        \}\
+                        // 3. \'c6\'e4\'cb\'fb\'c4\'ac\'c8\'cf\'ca\'d3\'ce\'aa\'b3\'b5\'c9\'ed\
+                        else \{\
+                            child.material = bodyMaterial;\
+                        \}\
+                    \}\
+                \});\
+\
+                // \'d7\'d4\'b6\'af\'cb\'f5\'b7\'c5\'d3\'eb\'be\'d3\'d6\'d0\
+                const box = new THREE.Box3().setFromObject(carModel);\
+                const size = box.getSize(new THREE.Vector3());\
+                const center = box.getCenter(new THREE.Vector3());\
+                const maxDim = Math.max(size.x, size.y, size.z);\
+                const scale = 5.0 / maxDim;\
+                \
+                carModel.scale.set(scale, scale, scale);\
+                carModel.position.sub(center.multiplyScalar(scale));\
+                \
+                scene.add(carModel);\
+                loaderUI.style.display = 'none'; // \'d2\'fe\'b2\'d8\'bc\'d3\'d4\'d8\'cc\'f5\
+\
+            \}, (xhr) => \{\
+                // \'bc\'d3\'d4\'d8\'bd\'f8\'b6\'c8 (\'bf\'c9\'d1\'a1)\
+                // console.log((xhr.loaded / xhr.total * 100) + '% loaded');\
+            \}, (error) => \{\
+                console.error(error);\
+                loaderUI.innerHTML = "<span style='color:red'>ERROR: car.glb NOT FOUND</span>";\
+                alert('\'c7\'eb\'c8\'b7\'b1\'a3\'d2\'d1\'bd\'ab\'c4\'a3\'d0\'cd\'ce\'c4\'bc\'fe\'d6\'d8\'c3\'fc\'c3\'fb\'ce\'aa "car.glb" \'b2\'a2\'b7\'c5\'d4\'da\'cd\'ac\'d2\'bb\'c4\'bf\'c2\'bc\'cf\'c2\'a3\'a1');\
+            \});\
+        \}\
+\
+        function setupUIListeners() \{\
+            // \'d1\'d5\'c9\'ab\'d1\'a1\'d4\'f1\'c6\'f7\
+            document.getElementById('color-picker').addEventListener('input', (e) => \{\
+                bodyMaterial.color.set(e.target.value);\
+            \});\
+\
+            // \'c1\'c1\'b6\'c8\'bf\'d8\'d6\'c6\
+            const brightnessSlider = document.getElementById('brightness-slider');\
+            brightnessSlider.addEventListener('input', (e) => \{\
+                const val = parseFloat(e.target.value);\
+                lights.ambient.intensity = baseIntensity.ambient * val;\
+                lights.top.intensity = baseIntensity.top * val;\
+                lights.rim.intensity = baseIntensity.rim * val;\
+                lights.bottom.intensity = baseIntensity.bottom * val;\
+            \});\
+        \}\
+\
+        function onResize() \{\
+            camera.aspect = window.innerWidth / window.innerHeight;\
+            camera.updateProjectionMatrix();\
+            renderer.setSize(window.innerWidth, window.innerHeight);\
+        \}\
+\
+        function animate() \{\
+            requestAnimationFrame(animate);\
+            time += 0.005;\
+\
+            if (carModel) \{\
+                // \'d0\'fc\'b8\'a1\'ba\'f4\'ce\'fc\'b6\'af\'bb\'ad\
+                carModel.position.y = Math.sin(time) * 0.1;\
+            \}\
+            // \'b8\'fc\'d0\'c2\'bf\'d8\'d6\'c6\'c6\'f7(\'b4\'a6\'c0\'ed\'d7\'d4\'b6\'af\'d0\'fd\'d7\'aa)\
+            // renderer.domElement.parentNode ? null : null; // Hacky check if still attached\
+            renderer.render(scene, camera);\
+        \}\
+    </script>\
+</body>\
+</html>}
